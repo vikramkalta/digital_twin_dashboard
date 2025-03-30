@@ -28,7 +28,7 @@
 }
 
 .tile.active {
-  background-color: #007bff;
+  background-color: #0f3257;
   color: #fff;
   border-color: #007bff;
 }
@@ -62,8 +62,7 @@
 .floating-menu {
   position: absolute;
   left: 20px;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 10px;
   width: 180px;
   background: rgba(255, 255, 255, 0.2); /* Glassmorphism */
   backdrop-filter: blur(10px);
@@ -122,8 +121,8 @@ button.active {
   position: absolute;
   bottom: 20px;
   right: 20px;
-  height: 350px;
-  width: calc(30% - 40px);
+  height: 200px;
+  width: calc(40% - 40px);
   background: rgba(255, 255, 255, 0.2); /* Glassmorphism */
   backdrop-filter: blur(10px);
   border-radius: 10px;
@@ -136,4 +135,17 @@ button.active {
   font-size: 16px;
   margin-bottom: 10px;
   color: #333;
+}
+
+.room-pie-chart {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  width: calc(30% - 40px);
+  background: rgba(255, 255, 255, 0.2); /* Glassmorphism */
+  backdrop-filter: blur(10px);
+  border-radius: 10px;
+  padding: 15px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  z-index: 1;
 }

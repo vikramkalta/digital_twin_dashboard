@@ -10,12 +10,32 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
   Tooltip,
   Legend,
-  ResponsiveContainer,
 } from "recharts";
 
 import { Model } from "./assets/Model";
+
+// Example Dynamic Room Values
+const initialRoomValues = {
+  SecondFloorRoom1: "0",
+  SecondFloorRoom2: "0",
+  SecondFloorRoom3: "0",
+  SecondFloorRoom4: "0",
+  SecondFloorRoom5: "0",
+};
+
+const ROOMS = {
+  "Room 1": "SecondFloorRoom1",
+  "Room 2": "SecondFloorRoom2",
+  "Room 3": "SecondFloorRoom3",
+  "Room 4": "SecondFloorRoom4",
+  "Room 5": "SecondFloorRoom5",
+};
 
 // Thresholds for alerts
 const thresholds = {
@@ -33,9 +53,12 @@ function App() {
   const [selectedMonth, setSelectedMonth] = useState("Select All");
   const [selectedKPI, setSelectedKPI] = useState("CO2"); // Default KPI
   const [kpiValue, setKpiValue] = useState(0);
-  const [mode, setMode] = useState("Historical"); // Modes: "Historical", "Forecast"
+  const [mode] = useState("Historical"); // Modes: "Historical", "Forecast"
   const [forecastData, setForecastData] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
+  const [pieChartData, setPieChartData] = useState([]);
+
+  const [roomValues, setRoomValues] = useState(initialRoomValues);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -58,7 +81,7 @@ function App() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch("/iaq_with_utilization.csv");
+        const response = await fetch("/kpis_data.csv");
         const text = await response.text();
         const parsedData = Papa.parse(text, {
           header: true,
@@ -66,15 +89,16 @@ function App() {
         }).data;
         // Process data: extract CO2 values and month
         const dataWithMonths = parsedData.map((row) => {
-          const date = new Date(row.start_time); // Ensure the date field exists and is valid
+          const date = new Date(row.Timestamp); // Ensure the date field exists and is valid
           return {
-            co2: parseInt(row.co2),
-            humidity: parseInt(row.humidity),
-            temperature: parseInt(row.temp),
+            roomID: row.RoomID,
+            co2: parseInt(row.CO2),
+            humidity: parseInt(row.Humidity),
+            temperature: parseInt(row.Temperature),
             occupancy: parseInt(row.Occupancy),
-            spaceutil: parseInt(row.SpaceUtil * 100),
+            spaceutil: parseInt(row.SpaceUtil),
             month: date.toLocaleString("default", { month: "long" }), // Extract month name
-            rowDate: row.start_time,
+            rowDate: row.Timestamp,
           };
         });
 
@@ -96,6 +120,7 @@ function App() {
 
         setData(dataWithMonths);
         setMonths(uniqueMonths);
+        setPieChartData(processRoomDataForPieChart(dataWithMonths));
       } catch (error) {
         console.log("Error in fetchData", error);
       }
@@ -108,28 +133,21 @@ function App() {
     if (data.length > 0) updateKpiValue();
   }, [data, selectedMonth, selectedKPI, mode]);
 
-  useEffect(() => {
-    if (mode === "Historical") {
-      return;
-    }
-    // Check for threshold breaches and show alerts
-    if (selectedKPI === "CO2" && kpiValue > thresholds.CO2) {
-      alert(`CO2 value (${kpiValue.toFixed(2)}). Needs attention.`);
-    } else if (
-      selectedKPI === "Humidity" &&
-      (kpiValue < thresholds.Humidity[0] || kpiValue > thresholds.Humidity[1])
-    ) {
-      alert(`Humidity value (${kpiValue.toFixed(2)}%). Needs attention.`);
-    } else if (
-      selectedKPI === "Temperature" &&
-      (kpiValue < thresholds.Temperature[0] ||
-        kpiValue > thresholds.Temperature[1])
-    ) {
-      alert(`Temperature value (${kpiValue.toFixed(2)}°C). Needs attention.`);
-    } else if (selectedKPI === "Occupancy" && kpiValue > thresholds.Occupancy) {
-      alert(`Occupancy value (${kpiValue.toFixed(2)}). Needs attention.`);
-    }
-  }, [kpiValue]);
+  const processRoomDataForPieChart = (data) => {
+    const roomMap = {};
+
+    data.forEach(({ roomID, [selectedKPI.toLowerCase()]: value }) => {
+      if (!roomMap[roomID]) {
+        roomMap[roomID] = 0;
+      }
+      roomMap[roomID] += value; // Sum up values per room
+    });
+
+    return Object.entries(roomMap).map(([room, value]) => ({
+      name: room,
+      value,
+    }));
+  };
 
   const updateKpiValue = () => {
     let filteredData = [];
@@ -138,18 +156,64 @@ function App() {
         selectedMonth === "Select All"
           ? data
           : data.filter((row) => row.month === selectedMonth);
+
       const avgHistorical =
         filteredData.reduce((sum, row) => {
           const value = row[selectedKPI.toLowerCase()];
           return sum + (value !== "" && !isNaN(value) ? parseFloat(value) : 0);
         }, 0) / filteredData.length;
-      // const kpiData = filteredData.map((el) => {
-      //   return {
-      //     time: el.start_time,
-      //     value: el[selectedKPI.toLowerCase()],
-      //   };
-      // });
-      // setKPIData(kpiData);
+
+      const groupByRoomValues = Object.values(
+        data.reduce(
+          (
+            acc,
+            { roomID, co2, humidity, temperature, occupancy, spaceutil }
+          ) => {
+            if (!acc[roomID]) {
+              acc[roomID] = {
+                roomID,
+                count: 0,
+                co2: 0,
+                humidity: 0,
+                temperature: 0,
+                occupancy: 0,
+                spaceutil: 0,
+              };
+            }
+
+            acc[roomID].count += 1;
+            acc[roomID].co2 += isNaN(co2) ? 0 : co2;
+            acc[roomID].humidity += isNaN(humidity) ? 0 : humidity;
+            acc[roomID].temperature += isNaN(temperature) ? 0 : temperature;
+            acc[roomID].occupancy += isNaN(occupancy) ? 0 : occupancy;
+            acc[roomID].spaceutil += isNaN(spaceutil) ? 0 : spaceutil;
+            return acc;
+          },
+          {}
+        )
+      ).map(
+        ({
+          roomID,
+          co2,
+          humidity,
+          temperature,
+          occupancy,
+          spaceutil,
+          count,
+        }) => ({
+          roomID,
+          co2: (co2 / count).toFixed(2),
+          temperature: (temperature / count).toFixed(2),
+          humidity: (humidity / count).toFixed(2),
+          occupancy: (occupancy / count).toFixed(2),
+          spaceutil: (spaceutil / count).toFixed(2),
+        })
+      );
+      const _roomValues = {};
+      for (const room of groupByRoomValues) {
+        _roomValues[ROOMS[room.roomID]] = room[selectedKPI.toLowerCase()];
+      }
+      setRoomValues(_roomValues);
       setFilteredData(filteredData);
       setKpiValue(avgHistorical || 0);
     } else {
@@ -158,8 +222,10 @@ function App() {
           const value = row[selectedKPI];
           return sum + (value !== "" && !isNaN(value) ? parseFloat(value) : 0);
         }, 0) / forecastData.length;
+
       setKpiValue(avgForecast || 0);
     }
+    setPieChartData(processRoomDataForPieChart(data));
   };
 
   return (
@@ -180,6 +246,9 @@ function App() {
       {/* Time Series Graph at the Bottom */}
       <TimeSeriesGraph selectedKPI={selectedKPI} data={filteredData} />
 
+      {/* Room Pie Chart at the Bottom left*/}
+      <RoomPieChart data={pieChartData} kpi={selectedKPI.toLowerCase()} />
+
       <Canvas camera={{ fov: 18 }}>
         <ambientLight intensity={0.5} />
         <directionalLight position={[10, 10, 5]} intensity={1.5} />
@@ -194,6 +263,7 @@ function App() {
             kpi={selectedKPI}
             value={kpiValue}
             visibleFloor={visibleFloor}
+            roomValues={roomValues}
           />
         </Suspense>
         <Environment preset="sunset" />
@@ -217,29 +287,6 @@ const FloatingMenu = ({
 }) => {
   return (
     <div className="floating-menu">
-      {/* Floor Selector */}
-      <div className="menu-section">
-        <h3>Floors</h3>
-        <button
-          className={visibleFloor === "all" ? "active" : ""}
-          onClick={() => setVisibleFloor("all")}
-        >
-          All Floors
-        </button>
-        <button
-          className={visibleFloor === "1st" ? "active" : ""}
-          onClick={() => setVisibleFloor("1st")}
-        >
-          1st Floor
-        </button>
-        <button
-          className={visibleFloor === "2nd" ? "active" : ""}
-          onClick={() => setVisibleFloor("2nd")}
-        >
-          2nd Floor
-        </button>
-      </div>
-
       {/* KPI Selector */}
       <div className="menu-section">
         <h3>KPIs</h3>
@@ -313,7 +360,6 @@ const KpiGauge = ({ kpi, value }) => {
       );
       break;
     default:
-      gaugeValue = 0;
   }
   return (
     <div className="kpi-gauge">
@@ -321,7 +367,6 @@ const KpiGauge = ({ kpi, value }) => {
       <GaugeChart
         id="gauge-chart"
         nrOfLevels={20} // More levels for smooth transitions
-        // percent={value / 100} // Scale value between 0 and 1
         percent={gaugeValue}
         colors={["#00ff00", "#ffcc00", "#ff0000"]} // Green -> Yellow -> Red
         arcWidth={0.3} // Thickness of gauge
@@ -353,15 +398,76 @@ const TimeSeriesGraph = ({ selectedKPI, data }) => {
   const smoothedData = calculateMovingAverage(data, 30); // 3-point moving average
 
   return (
-    <div className="time-series-graph">
+    <div
+      className="time-series-graph"
+      style={{ height: "220px", padding: "5px" }}
+    >
       <h3>{selectedKPI} over Time</h3>
-      <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={smoothedData}>
+      <ResponsiveContainer width="100%" height={180}>
+        <LineChart
+          data={smoothedData}
+          margin={{ top: 5, right: 10, left: -10, bottom: 5 }}
+        >
           <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="time" />
+          <XAxis dataKey="time" tick={{ fontSize: 10 }} />
           <YAxis />
-          <Line type="monotone" dataKey="value" stroke="#007bff" dot={false} />
+          <Line
+            type="monotone"
+            dataKey="value"
+            stroke="#007bff"
+            dot={false}
+            strokeWidth={2}
+          />
         </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+const COLORS = ["#0088FE", "#00C49F", "#FF9900", "#FF8042", "#A45EE5", "#FF6680"];
+
+const RoomPieChart = ({ data }) => {
+  if (!data || data.length === 0) return <p>No data available</p>;
+
+  return (
+    <div
+      className="room-pie-chart"
+      style={{
+        height: "250px",
+        width: "250px",
+        padding: "0px",
+        zIndex: 1,
+      }}
+    >
+      <h4 style={{ fontSize: "14px", marginBottom: "5px" }}>Room-wise Data</h4>
+      <ResponsiveContainer width="100%" height={200}>
+        <PieChart>
+          <Pie
+            data={data}
+            cx="50%"
+            cy="50%"
+            outerRadius={60}
+            label={({ _name, percent }) =>
+              `${(percent * 100).toFixed(0)}%`
+            }
+            dataKey="value"
+          >
+            {data.map((_, index) => (
+              <Cell
+                key={`cell-${index}`}
+                fill={COLORS[index % COLORS.length]}
+              />
+            ))}
+          </Pie>
+          <Tooltip />
+          <Legend
+            layout="horizontal" 
+            verticalAlign="bottom"
+            align="center"
+            iconSize={10} 
+            wrapperStyle={{ fontSize: "10px", marginTop: "-10px" }} 
+          />
+        </PieChart>
       </ResponsiveContainer>
     </div>
   );
